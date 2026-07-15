@@ -1,0 +1,29 @@
+server:
+  port: 8080
+
+spring:
+
+  application:
+    name: event-gateway
+
+  datasource:
+    url: jdbc:h2:mem:gatewaydb
+
+  h2:
+    console:
+      enabled: true
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+
+management:
+
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+
+account:
+  service:
+    url: http://account-service:8081

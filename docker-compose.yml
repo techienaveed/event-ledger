@@ -1,0 +1,22 @@
+services:
+
+  account-service:
+
+    build: ./account-service
+
+    container_name: account-service
+
+    ports:
+      - "8081:8081"
+
+  event-gateway:
+
+    build: ./event-gateway
+
+    container_name: event-gateway
+
+    depends_on:
+      - account-service
+
+    ports:
+      - "8080:8080"
