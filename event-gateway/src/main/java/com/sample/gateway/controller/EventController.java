@@ -3,6 +3,7 @@ package com.sample.gateway.controller;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.sample.gateway.dto.EventRequest;
 import com.sample.gateway.dto.EventResponse;
+import com.sample.gateway.exception.ServiceUnavailableException;
 import com.sample.gateway.service.EventService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -25,7 +26,13 @@ public class EventController {
             @RequestBody EventRequest request) throws JsonProcessingException {
 
         EventResponse response =
-                service.create(request);
+                null;
+        try {
+            response = service.create(request);
+
+        } catch (ServiceUnavailableException e) {
+            throw new RuntimeException(e);
+        }
 
         return ResponseEntity
                 .status(HttpStatus.CREATED)

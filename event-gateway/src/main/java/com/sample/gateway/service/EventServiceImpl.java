@@ -8,8 +8,12 @@ import com.sample.gateway.dto.EventRequest;
 import com.sample.gateway.dto.EventResponse;
 import com.sample.gateway.dto.TransactionRequest;
 import com.sample.gateway.entity.Event;
+import com.sample.gateway.entity.EventStatus;
 import com.sample.gateway.exception.EventNotFoundException;
+import com.sample.gateway.exception.ServiceUnavailableException;
 import com.sample.gateway.repository.EventRepository;
+import com.sample.gateway.servicegateway.AccountServiceGateway;
+import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import org.springframework.stereotype.Service;
@@ -27,24 +31,15 @@ public class EventServiceImpl
         implements EventService {
 
     private final EventRepository repository;
-
-    private final AccountClient accountClient;
+    private final AccountServiceGateway accountServiceGateway;
 
     private final ObjectMapper objectMapper;
 
     @Override
-    public EventResponse create(EventRequest request) throws JsonProcessingException {
+    @Transactional
+    public EventResponse create(EventRequest request) throws ServiceUnavailableException {
 
-        Optional<Event> existing =
-                repository.findByEventId(request.eventId());
-
-        if(existing.isPresent()){
-
-            return toResponse(existing.get());
-
-        }
-
-        Event entity =
+        Event event =
                 Event.builder()
                         .eventId(request.eventId())
                         .accountId(request.accountId())
@@ -54,34 +49,54 @@ public class EventServiceImpl
                         .eventTimestamp(request.eventTimestamp())
                         .metadata(writeMetadata(request.metadata()))
                         .createdAt(Instant.now())
-                        .build();
+                        .build();;
 
-        repository.save(entity);
+        event.setStatus(EventStatus.PENDING);
 
-        accountClient.applyTransaction(
+        repository.save(event);
 
-                request.accountId(),
+        try {
 
-                new TransactionRequest(
+            accountServiceGateway.applyTransaction(
+                    new TransactionRequest(
 
-                        request.eventId(),
+                            request.eventId(),
 
-                        request.accountId(),
+                            request.accountId(),
 
-                        request.type().name(),
+                            request.type().name(),
 
-                        request.amount(),
+                            request.amount(),
 
-                        request.currency(),
+                            request.currency(),
 
-                        request.eventTimestamp()
+                            request.eventTimestamp()
 
-                ));
+                    ));
 
-        return toResponse(entity);
+            event.setStatus(EventStatus.COMPLETED);
+
+        }
+
+        catch (Exception ex) {
+
+            event.setStatus(EventStatus.FAILED);
+
+            repository.save(event);
+
+            throw new ServiceUnavailableException(
+
+                    "Account service is unavailable. Please try again later."
+
+            );
+
+        }
+
+        repository.save(event);
+
+        return toResponse(event);
 
     }
-
     private EventResponse toResponse(Event event)  {
 
         Map<String, Object> metadata = Map.of();

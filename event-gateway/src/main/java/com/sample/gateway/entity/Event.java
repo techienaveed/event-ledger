@@ -45,4 +45,8 @@ public class Event {
 
     @Column(nullable=false)
     private Instant createdAt;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private EventStatus status;
 }

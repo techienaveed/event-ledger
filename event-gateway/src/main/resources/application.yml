@@ -27,3 +27,38 @@ management:
 account:
   service:
     url: http://account-service:8081
+
+
+resilience4j:
+
+  circuitbreaker:
+
+    instances:
+
+      accountService:
+
+        slidingWindowSize: 10
+
+        minimumNumberOfCalls: 5
+
+        failureRateThreshold: 50
+
+        waitDurationInOpenState: 15s
+
+  retry:
+
+    instances:
+
+      accountService:
+
+        maxAttempts: 3
+
+        waitDuration: 1s
+
+  timelimiter:
+
+    instances:
+
+      accountService:
+
+        timeoutDuration: 3s

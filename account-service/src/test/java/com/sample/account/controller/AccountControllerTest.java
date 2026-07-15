@@ -8,6 +8,7 @@ import com.sample.account.dto.TransactionResponse;
 import com.sample.account.exception.AccountNotFoundException;
 import com.sample.account.service.AccountService;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -29,7 +30,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class AccountControllerTest {
 
     private MockMvc mockMvc;
-
     private ObjectMapper objectMapper;
 
     @Mock
@@ -44,184 +44,228 @@ class AccountControllerTest {
     void setUp() {
         objectMapper = new ObjectMapper();
         mockMvc = MockMvcBuilders.standaloneSetup(new AccountController(accountService)).build();
-        
+
         accountId = "ACC001";
         eventId = "EVT001";
         amount = new BigDecimal("100.00");
         now = Instant.now();
     }
 
-    @Test
-    void testApplyTransaction_Success() throws Exception {
-        // Arrange
-        TransactionRequest request = new TransactionRequest(
-                eventId,
-                accountId,
-                "CREDIT",
-                amount,
-                "USD",
-                now
-        );
+    @Nested
+    class ApplyTransactionTests {
 
-        doNothing().when(accountService).applyTransaction(any(TransactionRequest.class));
+        @Test
+        void shouldApplyTransactionSuccessfully() throws Exception {
+            TransactionRequest request = new TransactionRequest(
+                    eventId,
+                    accountId,
+                    "CREDIT",
+                    amount,
+                    "USD",
+                    now
+            );
 
-        // Act & Assert
-        mockMvc.perform(post("/accounts/{accountId}/transactions", accountId)
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isCreated());
+            doNothing().when(accountService).applyTransaction(any(TransactionRequest.class));
 
-        verify(accountService).applyTransaction(any(TransactionRequest.class));
+            mockMvc.perform(post("/accounts/{accountId}/transactions", accountId)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(request)))
+                    .andExpect(status().isCreated());
+
+            verify(accountService).applyTransaction(any(TransactionRequest.class));
+        }
+
+        @Test
+        void shouldRejectInvalidTransaction() throws Exception {
+            String invalidRequest = "{}";
+
+            mockMvc.perform(post("/accounts/{accountId}/transactions", accountId)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(invalidRequest))
+                    .andExpect(status().isBadRequest());
+
+            verify(accountService, never()).applyTransaction(any(TransactionRequest.class));
+        }
+
+        @Test
+        void shouldApplyMultipleTransactions() throws Exception {
+            TransactionRequest request1 = new TransactionRequest(
+                    "EVT001",
+                    accountId,
+                    "CREDIT",
+                    new BigDecimal("100.00"),
+                    "USD",
+                    now
+            );
+
+            TransactionRequest request2 = new TransactionRequest(
+                    "EVT002",
+                    accountId,
+                    "DEBIT",
+                    new BigDecimal("50.00"),
+                    "USD",
+                    now
+            );
+
+            doNothing().when(accountService).applyTransaction(any(TransactionRequest.class));
+
+            mockMvc.perform(post("/accounts/{accountId}/transactions", accountId)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(request1)))
+                    .andExpect(status().isCreated());
+
+            mockMvc.perform(post("/accounts/{accountId}/transactions", accountId)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(request2)))
+                    .andExpect(status().isCreated());
+
+            verify(accountService, times(2)).applyTransaction(any(TransactionRequest.class));
+        }
     }
 
-    @Test
-    void testApplyTransaction_InvalidRequest() throws Exception {
-        // Arrange
-        String invalidRequest = "{}"; // Missing required fields
+    @Nested
+    class GetBalanceTests {
 
-        // Act & Assert
-        mockMvc.perform(post("/accounts/{accountId}/transactions", accountId)
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(invalidRequest))
-                .andExpect(status().isBadRequest());
+        @Test
+        void shouldGetBalanceSuccessfully() throws Exception {
+            BalanceResponse response = new BalanceResponse(accountId, amount);
+            when(accountService.getBalance(accountId)).thenReturn(response);
 
-        verify(accountService, never()).applyTransaction(any(TransactionRequest.class));
+            mockMvc.perform(get("/accounts/{accountId}/balance", accountId)
+                            .contentType(MediaType.APPLICATION_JSON))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.accountId").value(accountId))
+                    .andExpect(jsonPath("$.balance").value(100.00));
+
+            verify(accountService).getBalance(accountId);
+        }
+
+        @Test
+        void shouldThrowExceptionWhenAccountNotFound() throws Exception {
+            when(accountService.getBalance(accountId))
+                    .thenThrow(new AccountNotFoundException(accountId));
+
+            mockMvc.perform(get("/accounts/{accountId}/balance", accountId)
+                            .contentType(MediaType.APPLICATION_JSON))
+                    .andExpect(status().isInternalServerError());
+
+            verify(accountService).getBalance(accountId);
+        }
+
+        @Test
+        void shouldReturnZeroBalance() throws Exception {
+            BalanceResponse response = new BalanceResponse(accountId, BigDecimal.ZERO);
+            when(accountService.getBalance(accountId)).thenReturn(response);
+
+            mockMvc.perform(get("/accounts/{accountId}/balance", accountId)
+                            .contentType(MediaType.APPLICATION_JSON))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.balance").value(0.0));
+
+            verify(accountService).getBalance(accountId);
+        }
     }
 
-    @Test
-    void testGetBalance_Success() throws Exception {
-        // Arrange
-        BalanceResponse response = new BalanceResponse(accountId, amount);
+    @Nested
+    class GetAccountTests {
 
-        when(accountService.getBalance(accountId)).thenReturn(response);
+        @Test
+        void shouldGetAccountSuccessfully() throws Exception {
+            TransactionResponse transaction = new TransactionResponse(
+                    eventId,
+                    "CREDIT",
+                    amount,
+                    "USD",
+                    now
+            );
 
-        // Act & Assert
-        mockMvc.perform(get("/accounts/{accountId}/balance", accountId)
-                .contentType(MediaType.APPLICATION_JSON))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.accountId").value(accountId))
-                .andExpect(jsonPath("$.balance").value(amount.doubleValue()));
+            AccountResponse response = new AccountResponse(
+                    accountId,
+                    amount,
+                    List.of(transaction)
+            );
 
-        verify(accountService).getBalance(accountId);
-    }
+            when(accountService.getAccount(accountId)).thenReturn(response);
 
-    @Test
-    void testGetBalance_NotFound() throws Exception {
-        // Arrange
-        when(accountService.getBalance(accountId))
-                .thenThrow(new AccountNotFoundException(accountId));
+            mockMvc.perform(get("/accounts/{accountId}", accountId)
+                            .contentType(MediaType.APPLICATION_JSON))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.accountId").value(accountId))
+                    .andExpect(jsonPath("$.balance").value(100.00))
+                    .andExpect(jsonPath("$.transactions").isArray())
+                    .andExpect(jsonPath("$.transactions[0].eventId").value(eventId))
+                    .andExpect(jsonPath("$.transactions[0].type").value("CREDIT"));
 
-        // Act & Assert
-        mockMvc.perform(get("/accounts/{accountId}/balance", accountId)
-                .contentType(MediaType.APPLICATION_JSON))
-                .andExpect(status().isNotFound());
+            verify(accountService).getAccount(accountId);
+        }
 
-        verify(accountService).getBalance(accountId);
-    }
+        @Test
+        void shouldThrowExceptionWhenAccountNotFound() throws Exception {
+            when(accountService.getAccount(accountId))
+                    .thenThrow(new AccountNotFoundException(accountId));
 
-    @Test
-    void testGetAccount_Success() throws Exception {
-        // Arrange
-        TransactionResponse transaction = new TransactionResponse(
-                eventId,
-                "CREDIT",
-                amount,
-                "USD",
-                now
-        );
+            mockMvc.perform(get("/accounts/{accountId}", accountId)
+                            .contentType(MediaType.APPLICATION_JSON))
+                    .andExpect(status().isInternalServerError());
 
-        AccountResponse response = new AccountResponse(
-                accountId,
-                amount,
-                List.of(transaction)
-        );
+            verify(accountService).getAccount(accountId);
+        }
 
-        when(accountService.getAccount(accountId)).thenReturn(response);
+        @Test
+        void shouldReturnAccountWithEmptyTransactions() throws Exception {
+            AccountResponse response = new AccountResponse(
+                    accountId,
+                    BigDecimal.ZERO,
+                    List.of()
+            );
 
-        // Act & Assert
-        mockMvc.perform(get("/accounts/{accountId}", accountId)
-                .contentType(MediaType.APPLICATION_JSON))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.accountId").value(accountId))
-                .andExpect(jsonPath("$.balance").value(amount.doubleValue()))
-                .andExpect(jsonPath("$.transactions").isArray())
-                .andExpect(jsonPath("$.transactions[0].eventId").value(eventId))
-                .andExpect(jsonPath("$.transactions[0].type").value("CREDIT"));
+            when(accountService.getAccount(accountId)).thenReturn(response);
 
-        verify(accountService).getAccount(accountId);
-    }
+            mockMvc.perform(get("/accounts/{accountId}", accountId)
+                            .contentType(MediaType.APPLICATION_JSON))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.accountId").value(accountId))
+                    .andExpect(jsonPath("$.balance").value(0.0))
+                    .andExpect(jsonPath("$.transactions").isEmpty());
 
-    @Test
-    void testGetAccount_NotFound() throws Exception {
-        // Arrange
-        when(accountService.getAccount(accountId))
-                .thenThrow(new AccountNotFoundException(accountId));
+            verify(accountService).getAccount(accountId);
+        }
 
-        // Act & Assert
-        mockMvc.perform(get("/accounts/{accountId}", accountId)
-                .contentType(MediaType.APPLICATION_JSON))
-                .andExpect(status().isNotFound());
+        @Test
+        void shouldReturnAccountWithMultipleTransactions() throws Exception {
+            TransactionResponse transaction1 = new TransactionResponse(
+                    "EVT001",
+                    "CREDIT",
+                    new BigDecimal("100.00"),
+                    "USD",
+                    now
+            );
 
-        verify(accountService).getAccount(accountId);
-    }
+            TransactionResponse transaction2 = new TransactionResponse(
+                    "EVT002",
+                    "DEBIT",
+                    new BigDecimal("50.00"),
+                    "USD",
+                    now
+            );
 
-    @Test
-    void testGetAccount_EmptyTransactions() throws Exception {
-        // Arrange
-        AccountResponse response = new AccountResponse(
-                accountId,
-                BigDecimal.ZERO,
-                List.of()
-        );
+            AccountResponse response = new AccountResponse(
+                    accountId,
+                    new BigDecimal("50.00"),
+                    List.of(transaction1, transaction2)
+            );
 
-        when(accountService.getAccount(accountId)).thenReturn(response);
+            when(accountService.getAccount(accountId)).thenReturn(response);
 
-        // Act & Assert
-        mockMvc.perform(get("/accounts/{accountId}", accountId)
-                .contentType(MediaType.APPLICATION_JSON))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.accountId").value(accountId))
-                .andExpect(jsonPath("$.balance").value(0))
-                .andExpect(jsonPath("$.transactions").isEmpty());
+            mockMvc.perform(get("/accounts/{accountId}", accountId)
+                            .contentType(MediaType.APPLICATION_JSON))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.balance").value(50.00))
+                    .andExpect(jsonPath("$.transactions.length()").value(2))
+                    .andExpect(jsonPath("$.transactions[0].type").value("CREDIT"))
+                    .andExpect(jsonPath("$.transactions[1].type").value("DEBIT"));
 
-        verify(accountService).getAccount(accountId);
-    }
-
-    @Test
-    void testApplyTransaction_MultipleTransactions() throws Exception {
-        // Arrange
-        TransactionRequest request1 = new TransactionRequest(
-                "EVT001",
-                accountId,
-                "CREDIT",
-                new BigDecimal("100.00"),
-                "USD",
-                now
-        );
-
-        TransactionRequest request2 = new TransactionRequest(
-                "EVT002",
-                accountId,
-                "DEBIT",
-                new BigDecimal("50.00"),
-                "USD",
-                now
-        );
-
-        doNothing().when(accountService).applyTransaction(any(TransactionRequest.class));
-
-        // Act & Assert - First transaction
-        mockMvc.perform(post("/accounts/{accountId}/transactions", accountId)
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(request1)))
-                .andExpect(status().isCreated());
-
-        // Act & Assert - Second transaction
-        mockMvc.perform(post("/accounts/{accountId}/transactions", accountId)
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(request2)))
-                .andExpect(status().isCreated());
-
-        verify(accountService, times(2)).applyTransaction(any(TransactionRequest.class));
+            verify(accountService).getAccount(accountId);
+        }
     }
 }
