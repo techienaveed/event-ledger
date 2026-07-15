@@ -3,6 +3,8 @@ package com.sample.gateway.service;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.sample.gateway.client.AccountClient;
 import com.sample.gateway.dto.EventRequest;
 import com.sample.gateway.dto.EventResponse;
@@ -14,6 +16,11 @@ import com.sample.gateway.exception.ServiceUnavailableException;
 import com.sample.gateway.repository.EventRepository;
 import com.sample.gateway.servicegateway.AccountServiceGateway;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.tracing.Span;
+import io.micrometer.tracing.Tracer;
+import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import org.springframework.stereotype.Service;
@@ -30,14 +37,42 @@ import java.util.Optional;
 public class EventServiceImpl
         implements EventService {
 
+    private final Tracer tracer;
+
+    private final MeterRegistry meterRegistry;
+
     private final EventRepository repository;
     private final AccountServiceGateway accountServiceGateway;
 
     private final ObjectMapper objectMapper;
 
+    private Counter eventsCreated;
+    private Counter duplicateEvents;
+    private Counter failedEvents;
+
+    @PostConstruct
+    void init() {
+
+        eventsCreated = meterRegistry.counter("events.created");
+
+        duplicateEvents = meterRegistry.counter("events.duplicates");
+
+        failedEvents = meterRegistry.counter("events.failed");
+
+    }
+
     @Override
     @Transactional
     public EventResponse create(EventRequest request) throws ServiceUnavailableException {
+
+
+        Span current = tracer.currentSpan();
+
+        if (current != null) {
+            current.tag("event.id", request.eventId());
+            current.tag("trace.id", current.context().traceId());
+            current.tag("span.id", current.context().spanId());
+        }
 
         Event event =
                 Event.builder()
@@ -75,12 +110,15 @@ public class EventServiceImpl
                     ));
 
             event.setStatus(EventStatus.COMPLETED);
+            eventsCreated.increment();
 
         }
 
         catch (Exception ex) {
 
             event.setStatus(EventStatus.FAILED);
+
+            failedEvents.increment();
 
             repository.save(event);
 
@@ -100,6 +138,9 @@ public class EventServiceImpl
     private EventResponse toResponse(Event event)  {
 
         Map<String, Object> metadata = Map.of();
+
+//        objectMapper.registerModule(new JavaTimeModule());
+//        objectMapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
 
         if (event.getMetadata() != null) {
 

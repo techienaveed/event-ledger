@@ -17,13 +17,6 @@ spring:
     hibernate:
       ddl-auto: update
 
-management:
-
-  endpoints:
-    web:
-      exposure:
-        include: health,info,metrics,prometheus
-
 account:
   service:
     url: http://account-service:8081
@@ -62,3 +55,21 @@ resilience4j:
       accountService:
 
         timeoutDuration: 3s
+
+management:
+
+  tracing:
+
+    enabled: true
+
+    sampling:
+
+      probability: 1.0
+
+  endpoints:
+
+    web:
+
+      exposure:
+
+        include: health,metrics,prometheus

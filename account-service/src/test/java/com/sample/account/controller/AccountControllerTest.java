@@ -1,6 +1,8 @@
 package com.sample.account.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.sample.account.dto.AccountResponse;
 import com.sample.account.dto.BalanceResponse;
 import com.sample.account.dto.TransactionRequest;
@@ -43,6 +45,11 @@ class AccountControllerTest {
     @BeforeEach
     void setUp() {
         objectMapper = new ObjectMapper();
+        // Register module so Jackson can handle java.time types like Instant
+        objectMapper.registerModule(new JavaTimeModule());
+        // Make Instant serialize as ISO-8601 (not timestamps)
+        objectMapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+
         mockMvc = MockMvcBuilders.standaloneSetup(new AccountController(accountService)).build();
 
         accountId = "ACC001";

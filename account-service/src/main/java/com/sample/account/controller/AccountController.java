@@ -36,4 +36,9 @@ public class AccountController {
     public AccountResponse account(@PathVariable String accountId) throws AccountNotFoundException{
         return service.getAccount(accountId);
     }
+
+    @ExceptionHandler(AccountNotFoundException.class)
+
+   @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
+    public void handleAccountNotFoundException(AccountNotFoundException ex) {}
 }
