@@ -9,32 +9,30 @@ import com.sample.account.exception.AccountNotFoundException;
 import com.sample.account.service.AccountService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.boot.test.mock.MockBean;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-@WebMvcTest(AccountController.class)
+@ExtendWith(MockitoExtension.class)
 class AccountControllerTest {
 
-    @Autowired
     private MockMvc mockMvc;
 
-    @Autowired
     private ObjectMapper objectMapper;
 
-    @MockBean
+    @Mock
     private AccountService accountService;
 
     private String accountId;
@@ -44,6 +42,9 @@ class AccountControllerTest {
 
     @BeforeEach
     void setUp() {
+        objectMapper = new ObjectMapper();
+        mockMvc = MockMvcBuilders.standaloneSetup(new AccountController(accountService)).build();
+        
         accountId = "ACC001";
         eventId = "EVT001";
         amount = new BigDecimal("100.00");
